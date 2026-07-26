@@ -49,15 +49,67 @@ if [ "${1:-}" = "--uninstall" ]; then
     exit 0
 fi
 
-if ! command -v flock >/dev/null 2>&1; then
-    echo "错误：未找到 flock 命令（通常在 util-linux 包中），请先安装。" >&2
-    exit 1
-fi
+# ---------- 依赖检查（缺 cron / flock 时尝试自动安装） ----------
+ensure_cron() {
+    command -v crontab >/dev/null 2>&1 && return 0
+    echo "未找到 crontab 命令，尝试自动安装 cron..."
 
-if ! command -v crontab >/dev/null 2>&1; then
-    echo "错误：未找到 crontab 命令，请先安装 cron（如 cronie / cron 包）。" >&2
-    exit 1
-fi
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y >/dev/null 2>&1 || true
+        apt-get install -y cron
+        systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y cronie
+        systemctl enable --now crond >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y cronie
+        systemctl enable --now crond >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache dcron
+        rc-update add dcron default >/dev/null 2>&1 || true
+        rc-service dcron start >/dev/null 2>&1 || crond >/dev/null 2>&1 || true
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Sy --noconfirm cronie
+        systemctl enable --now cronie >/dev/null 2>&1 || true
+    elif command -v zypper >/dev/null 2>&1; then
+        zypper install -y cron
+        systemctl enable --now cron >/dev/null 2>&1 || true
+    fi
+
+    if ! command -v crontab >/dev/null 2>&1; then
+        echo "错误：自动安装 cron 失败，请手动安装后重试（Debian/Ubuntu: apt install cron；CentOS/RHEL: yum install cronie）。" >&2
+        exit 1
+    fi
+    echo "cron 安装完成。"
+}
+
+ensure_flock() {
+    command -v flock >/dev/null 2>&1 && return 0
+    echo "未找到 flock 命令，尝试自动安装 util-linux..."
+
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get install -y util-linux
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y util-linux
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y util-linux
+    elif command -v apk >/dev/null 2>&1; then
+        apk add --no-cache util-linux
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Sy --noconfirm util-linux
+    elif command -v zypper >/dev/null 2>&1; then
+        zypper install -y util-linux
+    fi
+
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "错误：自动安装 flock 失败，请手动安装 util-linux 包后重试。" >&2
+        exit 1
+    fi
+    echo "flock 安装完成。"
+}
+
+ensure_cron
+ensure_flock
 
 # 提醒：没给 TG 参数时脚本只会写日志，不会发通知
 case " $* " in

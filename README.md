@@ -29,6 +29,8 @@ sudo bash <(curl -fsSL https://raw.githubusercontent.com/sinalphabeta/ipblockedn
 
 传给 `install.sh` 的所有参数会原样传递给 `check_ip.sh`。也可以先 `git clone` 本仓库再在仓库目录里执行 `sudo bash install.sh <参数>`（有本地 `check_ip.sh` 时优先使用本地文件，否则自动从 GitHub raw 下载）。
 
+系统缺少 `cron` 或 `flock` 时，安装脚本会尝试用包管理器（apt / yum / dnf / apk / pacman / zypper）自动安装并启动服务。
+
 安装后自动完成以下配置：
 
 - `check_ip.sh` 放到 `/opt/ip_blocked_notify/` 并赋予执行权限
