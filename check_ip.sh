@@ -77,8 +77,37 @@ send_tg_message() {
         --connect-timeout 5 --max-time 15 \
         --data-urlencode "chat_id=${TG_CHAT_ID}" \
         --data-urlencode "text=${message}" \
+        --data-urlencode "parse_mode=HTML" \
         --data-urlencode "disable_web_page_preview=true"
     echo
+}
+
+# Telegram HTML 模式要求动态文本中的 &、<、> 必须转义。
+html_escape() {
+    printf '%s' "$1" | sed \
+        -e 's/\&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g'
+}
+
+format_notification() {
+    local title="$1"
+    local title_icon="$2"
+    local status="$3"
+    local status_icon="$4"
+    local note="$5"
+    local machine_html ip_html status_html test_html time_html note_html
+
+    machine_html="$(html_escape "$MACHINE_ID")"
+    ip_html="$(html_escape "$CURRENT_IPV4")"
+    status_html="$(html_escape "$status")"
+    test_html="$(html_escape "$TEST_MSG")"
+    time_html="$(html_escape "$current_time")"
+    note_html="$(html_escape "$note")"
+
+    printf '%s <b>%s</b>\n\n🖥️ <b>主机：</b>%s\n🌐 <b>当前 IP：</b><code>%s</code>\n%s <b>状态：</b>%s\n📡 <b>三网：</b>%s\n🕐 <b>时间：</b><code>%s</code>\nℹ️ <b>说明：</b>%s' \
+        "$title_icon" "$title" "$machine_html" "$ip_html" \
+        "$status_icon" "$status_html" "$test_html" "$time_html" "$note_html"
 }
 
 # ---------- 检测 IP 是否疑似被墙 ----------
@@ -134,7 +163,7 @@ check_ip_blocked() {
     [[ "$current_ipv4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || current_ipv4="unknown"
     echo "目前出口 IPv4: $current_ipv4"
 
-    TEST_MSG="聯通可達: ${unicom_ok}/${#unicom_ips[@]} | 移動可達: ${mobile_ok}/${#mobile_ips[@]} | 電信可達: ${telecom_ok}/${#telecom_ips[@]}"
+    TEST_MSG="联通 ${unicom_ok}/${#unicom_ips[@]}  |  移动 ${mobile_ok}/${#mobile_ips[@]}  |  电信 ${telecom_ok}/${#telecom_ips[@]}"
     CURRENT_IPV4="$current_ipv4"
 
     # 判断：至少两家运营商完全不通 => 疑似被墙
@@ -166,9 +195,11 @@ if check_ip_blocked; then
     reason="${BLOCK_REASON:-IP被墙}"
     echo "[$current_time] 检测结果：疑似被墙（$reason），IP=${CURRENT_IPV4}"
     if [ "$NOTIFY_MODE" = "always" ] || [ "$prev_state" != "blocked" ]; then
-        send_tg_message "$MACHINE_ID 当前IP (${CURRENT_IPV4}) $reason
-檢測結果：$TEST_MSG
-（仅检测，未更换IP）"
+        message="$(format_notification \
+            "IP 被墙告警" "🚨" \
+            "疑似被墙" "🔴" \
+            "仅检测，未更换 IP")"
+        send_tg_message "$message"
     else
         echo "仍处于被墙状态，此前已通知过，跳过重复通知。"
     fi
@@ -176,11 +207,17 @@ if check_ip_blocked; then
 else
     echo "[$current_time] 检测结果：IP 正常，IP=${CURRENT_IPV4}"
     if [ "$prev_state" = "blocked" ]; then
-        send_tg_message "$MACHINE_ID 当前IP (${CURRENT_IPV4}) 已恢复正常 ✅
-檢測結果：$TEST_MSG"
+        message="$(format_notification \
+            "IP 恢复通知" "✅" \
+            "已恢复正常" "🟢" \
+            "网络连通性已恢复")"
+        send_tg_message "$message"
     elif [ "$NOTIFY_MODE" = "always" ]; then
-        send_tg_message "$MACHINE_ID 当前IP (${CURRENT_IPV4}) 检测正常
-檢測結果：$TEST_MSG"
+        message="$(format_notification \
+            "IP 检测通知" "🔔" \
+            "访问正常" "🟢" \
+            "三网连通性检测完成")"
+        send_tg_message "$message"
     fi
     save_state "ok"
 fi
